@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python)
 ![Data](https://img.shields.io/badge/Data-Binance%20Futures-yellow?style=flat-square&logo=binance)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Status](https://img.shields.io/badge/Status-v0.1%20MVP-orange?style=flat-square)
+![Status](https://img.shields.io/badge/Status-v0.2%20MVP-orange?style=flat-square)
 
 > **"Don't stay up late manually downloading CSVs."** — Qu Zong
 
