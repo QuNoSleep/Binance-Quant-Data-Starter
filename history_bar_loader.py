@@ -6,11 +6,15 @@ import io
 import zipfile
 import os
 from tqdm import tqdm
+from joblib import Parallel, delayed
+
 # ================= 配置参数 =================
 SYMBOL_LIST = ['BTCUSDT', 'ETHUSDT']
 INTERVAL = '1m'
 START_DATE = "2020-01-01" 
 END_DATE = datetime.now()
+N_JOBS = 16
+BACKEND = "threading"
 
 # K线标准列定义
 KLINE_COLS_DEF = [
@@ -26,6 +30,7 @@ NUMERIC_COLS = [
     'quote_volume', 'count','taker_buy_volume',
     'taker_buy_quote_volume'
     ]
+
 # ================= 核心工具函数 =================
 def read_csv_auto(file_handle, fallback_columns=None):
     """
@@ -108,40 +113,50 @@ def fetch_monthly_funding(symbol, month_str):
     except Exception as e:
         print(f" [费率异常: {e}]", end="")
         return None
+    
+def download_daily_pair(symbol, interval, date_str):
+    """
+    下载指定日期的kline和mark_price，返回(k_df, m_df)
+    """
+    kline_url = f"https://data.binance.vision/data/futures/um/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{date_str}.zip"
+    mark_url  = f"https://data.binance.vision/data/futures/um/daily/markPriceKlines/{symbol}/{interval}/{symbol}-{interval}-{date_str}.zip"
+
+    k_df = fetch_and_clean_kline(symbol, date_str, kline_url)
+    m_df = fetch_and_clean_kline(symbol, date_str, mark_url)
+    return k_df, m_df
+
+def download_monthly_funding(symbol, month_str):
+    """下载指定月份的funding，返回df或None"""
+    return fetch_monthly_funding(symbol, month_str)
+
 # ================= 主程序 =================
 dates = pd.date_range(start=START_DATE, end=END_DATE, freq='D')
 str_dates = dates.strftime('%Y-%m-%d').tolist()
+month_list = sorted(pd.to_datetime(str_dates).to_period("M").astype(str).unique().to_list())
 
-os.makedirs("data_parquet", exist_ok=True)
+os.makedirs("data_parquet", exist_ok=True)  # parquet存放路径
 
 for symbol in SYMBOL_LIST:
-    print(f"\n开始处理: {symbol} | 总天数: {len(str_dates)}")
+    print(f"\n开始处理: {symbol} | 总天数: {len(str_dates)} ｜ 总月份: {len(month_list)}")
+
+    fund_results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
+        delayed(download_monthly_funding)(symbol, m)
+        for m in tqdm(month_list, desc=f"{symbol} funding(月)", leave=False)
+    )
+    all_fund_dfs = [df for df in fund_results if df is not None]
+
+    daily_results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
+        delayed(download_daily_pair)(symbol, INTERVAL, d)
+        for d in tqdm(str_dates, desc=f"{symbol} daily(日)", leave=False)
+    )
 
     all_kline_dfs = []
     all_mark_dfs = []
-    all_fund_dfs = []
-    
-    # 记录已处理的月份
-    processed_months = set()
-    for date in tqdm(str_dates): 
-        
-        # 下载当月费率
-        current_month = date[:7]
-        if current_month not in processed_months:
-            fund_data = fetch_monthly_funding(symbol, current_month)
-            if fund_data is not None:
-                all_fund_dfs.append(fund_data)
-            processed_months.add(current_month) # 标记已处理
-
-        # 下载每日数据
-        kline_url = f"https://data.binance.vision/data/futures/um/daily/klines/{symbol}/{INTERVAL}/{symbol}-{INTERVAL}-{date}.zip"
-        mark_url = f"https://data.binance.vision/data/futures/um/daily/markPriceKlines/{symbol}/{INTERVAL}/{symbol}-{INTERVAL}-{date}.zip"
-        
-        k_data = fetch_and_clean_kline(symbol, date, kline_url)
-        m_data = fetch_and_clean_kline(symbol, date, mark_url)
-        
-        if k_data is not None: all_kline_dfs.append(k_data)
-        if m_data is not None: all_mark_dfs.append(m_data)
+    for k_df, m_df in daily_results:
+        if k_df is not None:
+            all_kline_dfs.append(k_df)
+        if m_df is not None:
+            all_mark_dfs.append(m_df)
         
     print(f"\n正在合并 {symbol} 数据...")
     
@@ -182,7 +197,7 @@ for symbol in SYMBOL_LIST:
     final_df['code'] = symbol
 
     print(f"✅ 完成 {symbol}！Shape: {final_df.shape}")
-    display(final_df.head())
+    # display(final_df.head())
     
     # 保存
     final_df.to_parquet(f"data_parquet/{symbol}_{INTERVAL}.parquet")
