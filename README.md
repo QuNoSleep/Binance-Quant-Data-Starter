@@ -82,7 +82,7 @@ python history_bar_loader.py
 ## 🗺️ 开发路线图 (Roadmap)
 
 - [x] **v0.1 MVP**: 基础 K 线下载 + 资金费率清洗 + Parquet 存储
-- [ ] **v0.2 Performance**: 多线程并发下载 (Multi-threading)
+- [x] **v0.2 Performance**: 多线程并发下载 (Multi-threading)
 - [ ] **v0.3 Options**: 币安期权数据 (Options) 获取接口
 - [ ] **v0.4 Frequent**: 下载更高频率的数据 (High Frequent)
 
